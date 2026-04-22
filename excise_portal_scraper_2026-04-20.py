@@ -177,25 +177,47 @@ JS_NAVIGATE_BACK = """
 def js_search(search_term):
     return f"""
     () => {{
-        // Derive active view prefix from the known table ID so we never
-        // accidentally target a hidden panel's search field.
         var tableId = String(window.__PAD_TABLE_ID || '');
         var viewPrefix = '';
         if (tableId) {{
             var dash = tableId.indexOf('--');
-            if (dash > -1) viewPrefix = tableId.substring(0, dash + 2); // e.g. "__xmlview19--"
+            if (dash > -1) viewPrefix = tableId.substring(0, dash + 2);
         }}
+        // Exact search input IDs keyed by viewPrefix, sourced from portal DOM.
+        var SEARCH_IDS = {{
+            '__xmlview19--': '__xmlview19--_201X_search_searchField-I',
+            '__xmlview36--': '__xmlview36--202B_Search-I',
+            '__xmlview41--': '__xmlview41--ExciseList_myDeclSearch_searchField-I',
+            '__xmlview47--': '__xmlview47--_203H_List_table_searchField-I',
+            '__xmlview25--': '__xmlview25--_202R_Status_searchbar-I',
+            '__xmlview52--': '__xmlview52--202S_Search-I',
+            '__xmlview68--': '__xmlview68--202W_Search-I',
+            '__xmlview73--': '__xmlview73--_203B_Declaration_ListSearch_searchField-I',
+            '__xmlview30--': '__xmlview30--_203C_myDecSearch_searchField-I',
+            '__xmlview84--': '__xmlview84--203G_Search-I'
+        }};
         var all = document.querySelectorAll('input[type="search"]');
         var el = null;
-        // Pass 1: same-view _searchField-I
-        for (var i = 0; i < all.length; i++) {{
-            var id = all[i].id;
-            if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
-            if (id.indexOf('_searchField-I') > -1 && all[i].getBoundingClientRect().width > 0) {{
-                el = all[i]; break;
+        // Pass 1: exact hardcoded lookup
+        if (viewPrefix && SEARCH_IDS[viewPrefix]) {{
+            var targetId = SEARCH_IDS[viewPrefix];
+            for (var i = 0; i < all.length; i++) {{
+                if (all[i].id === targetId && all[i].getBoundingClientRect().width > 0) {{
+                    el = all[i]; break;
+                }}
             }}
         }}
-        // Pass 2: same-view Search-I (excludes searchbar)
+        // Pass 2: same-view _searchField-I
+        if (!el) {{
+            for (var i = 0; i < all.length; i++) {{
+                var id = all[i].id;
+                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+                if (id.indexOf('_searchField-I') > -1 && all[i].getBoundingClientRect().width > 0) {{
+                    el = all[i]; break;
+                }}
+            }}
+        }}
+        // Pass 3: same-view Search-I (excludes searchbar)
         if (!el) {{
             for (var i = 0; i < all.length; i++) {{
                 var id = all[i].id;
@@ -205,7 +227,7 @@ def js_search(search_term):
                 }}
             }}
         }}
-        // Pass 3: any visible input in same view (covers searchbar-style IDs)
+        // Pass 4: any visible input in same view
         if (!el) {{
             for (var i = 0; i < all.length; i++) {{
                 var id = all[i].id;
@@ -213,7 +235,7 @@ def js_search(search_term):
                 if (all[i].getBoundingClientRect().width > 0) {{ el = all[i]; break; }}
             }}
         }}
-        // Pass 4: last resort — any visible search input (no view restriction)
+        // Pass 5: last resort — any visible search input
         if (!el) {{
             for (var i = 0; i < all.length; i++) {{
                 if (all[i].getBoundingClientRect().width > 0) {{ el = all[i]; break; }}
@@ -257,14 +279,47 @@ JS_SET_STATUS_APPROVED = """
     var tableId = String(window.__PAD_TABLE_ID || '');
     var viewPrefix = '';
     if (tableId) { var d = tableId.indexOf('--'); if (d > -1) viewPrefix = tableId.substring(0, d + 2); }
-    var arrows = document.querySelectorAll('span[id$="_combobox-arrow"]');
+    // Exact combobox arrow IDs keyed by viewPrefix, sourced from portal DOM.
+    var COMBO_IDS = {
+        '__xmlview19--': '__xmlview19--_201X_Status_combobox-arrow',
+        '__xmlview36--': '__xmlview36--_202B_Status_combobox-arrow',
+        '__xmlview41--': '__xmlview41--ExciseList_myDeclStatus_combobox-arrow',
+        '__xmlview47--': '__xmlview47--_203H_List_table_combobox-arrow',
+        '__xmlview25--': '__xmlview25--_202R_Status_combobox-arrow',
+        '__xmlview52--': '__xmlview52--_202S_Status_combobox-arrow',
+        '__xmlview68--': '__xmlview68--_202W_Status_combobox-arrow',
+        '__xmlview73--': '__xmlview73--_203B_Declaration_ListStatus_combobox-arrow',
+        '__xmlview30--': '__xmlview30--_203C_myDecStatus_combobox-arrow',
+        '__xmlview84--': '__xmlview84--_203G_Status_combobox-arrow'
+    };
+    var arrows = document.querySelectorAll('span[id$="-arrow"]');
     var arrow = null;
-    for (var i = 0; i < arrows.length; i++) {
-        var id = arrows[i].id;
-        if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
-        if ((id.indexOf('Status_combobox') > -1 || id.indexOf('DecStatus_combobox') > -1 || id.indexOf('myDecStatus_combobox') > -1 || id.indexOf('myDeclStatus_combobox') > -1) && arrows[i].getBoundingClientRect().width > 0) {
-            arrow = arrows[i];
-            break;
+    // Pass 1: exact hardcoded lookup
+    if (viewPrefix && COMBO_IDS[viewPrefix]) {
+        var targetId = COMBO_IDS[viewPrefix];
+        for (var i = 0; i < arrows.length; i++) {
+            if (arrows[i].id === targetId && arrows[i].getBoundingClientRect().width > 0) {
+                arrow = arrows[i]; break;
+            }
+        }
+    }
+    // Pass 2: pattern-based (covers views not in lookup)
+    if (!arrow) {
+        for (var i = 0; i < arrows.length; i++) {
+            var id = arrows[i].id;
+            if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+            if ((id.indexOf('Status_combobox') > -1 || id.indexOf('DecStatus_combobox') > -1 || id.indexOf('myDecStatus_combobox') > -1 || id.indexOf('myDeclStatus_combobox') > -1) && arrows[i].getBoundingClientRect().width > 0) {
+                arrow = arrows[i]; break;
+            }
+        }
+    }
+    // Pass 3: any visible combobox arrow in same view
+    if (!arrow) {
+        var comboArrows = document.querySelectorAll('span[id$="_combobox-arrow"]');
+        for (var i = 0; i < comboArrows.length; i++) {
+            var id = comboArrows[i].id;
+            if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+            if (comboArrows[i].getBoundingClientRect().width > 0) { arrow = comboArrows[i]; break; }
         }
     }
     if (!arrow) return 'ARROW_NOT_FOUND';
@@ -294,14 +349,43 @@ JS_SET_STATUS_WAREHOUSE = """
     var tableId = String(window.__PAD_TABLE_ID || '');
     var viewPrefix = '';
     if (tableId) { var d = tableId.indexOf('--'); if (d > -1) viewPrefix = tableId.substring(0, d + 2); }
-    var arrows = document.querySelectorAll('span[id$="_combobox-arrow"]');
+    var COMBO_IDS = {
+        '__xmlview19--': '__xmlview19--_201X_Status_combobox-arrow',
+        '__xmlview36--': '__xmlview36--_202B_Status_combobox-arrow',
+        '__xmlview41--': '__xmlview41--ExciseList_myDeclStatus_combobox-arrow',
+        '__xmlview47--': '__xmlview47--_203H_List_table_combobox-arrow',
+        '__xmlview25--': '__xmlview25--_202R_Status_combobox-arrow',
+        '__xmlview52--': '__xmlview52--_202S_Status_combobox-arrow',
+        '__xmlview68--': '__xmlview68--_202W_Status_combobox-arrow',
+        '__xmlview73--': '__xmlview73--_203B_Declaration_ListStatus_combobox-arrow',
+        '__xmlview30--': '__xmlview30--_203C_myDecStatus_combobox-arrow',
+        '__xmlview84--': '__xmlview84--_203G_Status_combobox-arrow'
+    };
+    var arrows = document.querySelectorAll('span[id$="-arrow"]');
     var arrow = null;
-    for (var i = 0; i < arrows.length; i++) {
-        var id = arrows[i].id;
-        if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
-        if ((id.indexOf('Status_combobox') > -1 || id.indexOf('DecStatus_combobox') > -1 || id.indexOf('myDecStatus_combobox') > -1 || id.indexOf('myDeclStatus_combobox') > -1) && arrows[i].getBoundingClientRect().width > 0) {
-            arrow = arrows[i];
-            break;
+    if (viewPrefix && COMBO_IDS[viewPrefix]) {
+        var targetId = COMBO_IDS[viewPrefix];
+        for (var i = 0; i < arrows.length; i++) {
+            if (arrows[i].id === targetId && arrows[i].getBoundingClientRect().width > 0) {
+                arrow = arrows[i]; break;
+            }
+        }
+    }
+    if (!arrow) {
+        for (var i = 0; i < arrows.length; i++) {
+            var id = arrows[i].id;
+            if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+            if ((id.indexOf('Status_combobox') > -1 || id.indexOf('DecStatus_combobox') > -1 || id.indexOf('myDecStatus_combobox') > -1 || id.indexOf('myDeclStatus_combobox') > -1) && arrows[i].getBoundingClientRect().width > 0) {
+                arrow = arrows[i]; break;
+            }
+        }
+    }
+    if (!arrow) {
+        var comboArrows = document.querySelectorAll('span[id$="_combobox-arrow"]');
+        for (var i = 0; i < comboArrows.length; i++) {
+            var id = comboArrows[i].id;
+            if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+            if (comboArrows[i].getBoundingClientRect().width > 0) { arrow = comboArrows[i]; break; }
         }
     }
     if (!arrow) return 'FAIL';
