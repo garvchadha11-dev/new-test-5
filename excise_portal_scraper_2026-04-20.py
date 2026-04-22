@@ -595,24 +595,39 @@ JS_SPOT_CHECK_PERIOD = """
 () => {
     var table = document.getElementById(window.__PAD_TABLE_ID);
     if (!table) return 'NO_TABLE';
-    // Match on data-sap-ui-column attribute of <td> cells (exact SAP attribute from portal DOM).
-    // Keywords cover: 202R_ExciseTaxPeriod_LIST, 203C_DateOfSubmission_LIST, and similar columns
-    // on other declaration tables that contain 'Period', 'Date', or 'Submission' in their column id.
-    var DATE_ATTR_KEYWORDS = ['Period', 'Date', 'Submission'];
+    // Exact data-sap-ui-column values sourced directly from the portal DOM (hardcoded reference file).
+    // Period columns are preferred — they show "Month YYYY" and compare cleanly against the search term.
+    // DOS (Date of Submission) columns are the fallback for tables like 203C that have no period column.
+    var PERIOD_COLS = [
+        '__xmlview36--202B_EDOI_myDec_LIST',
+        '__xmlview41--ExciseList_myDecl_ETP',
+        '__xmlview25--202R_ExciseTaxPeriod_LIST',
+        '__xmlview57--202U_ETP_myDec_LIST'
+    ];
+    var DOS_COLS = [
+        '__xmlview36--202B_DOS_myDec_LIST',
+        '__xmlview41--ExciseList_myDecl_DOS',
+        '__xmlview25--202R_DateOfSubmission_LIST',
+        '__xmlview57--202U_DOS_myDec_LIST',
+        '__xmlview30--203C_DateOfSubmission_LIST_D'
+    ];
     var rows = Array.from(table.querySelectorAll('tr')).filter(function(r) {
         return r.querySelector('td');
     });
     if (!rows.length) return 'NO_ROWS';
     var cells = rows[0].querySelectorAll('td');
-    for (var i = 0; i < cells.length; i++) {
-        var col = cells[i].getAttribute('data-sap-ui-column') || '';
-        for (var k = 0; k < DATE_ATTR_KEYWORDS.length; k++) {
-            if (col.indexOf(DATE_ATTR_KEYWORDS[k]) > -1) {
-                var span = cells[i].querySelector('span');
-                var val = span
-                    ? (span.innerText || span.textContent || '').trim()
-                    : (cells[i].innerText || cells[i].textContent || '').trim();
-                if (val) return val;
+    var colSets = [PERIOD_COLS, DOS_COLS];
+    for (var s = 0; s < colSets.length; s++) {
+        for (var i = 0; i < cells.length; i++) {
+            var col = cells[i].getAttribute('data-sap-ui-column') || '';
+            for (var k = 0; k < colSets[s].length; k++) {
+                if (col === colSets[s][k]) {
+                    var span = cells[i].querySelector('span');
+                    var val = span
+                        ? (span.innerText || span.textContent || '').trim()
+                        : (cells[i].innerText || cells[i].textContent || '').trim();
+                    if (val) return val;
+                }
             }
         }
     }
