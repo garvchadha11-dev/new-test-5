@@ -709,6 +709,27 @@ JS_SPOT_CHECK_PERIOD = """
             }
         }
     }
+    // Fallback: scan <th> header text for tables with generic __column IDs
+    // Covers 202S, 202V, 202W, 203B (Excise Tax Period) and 204X, 203G (Date of Submission)
+    var HEADER_PRIORITY = ['Excise Tax Period', 'Date of Submission'];
+    var headerRow = table.querySelector('tr.sapMListTblHeader');
+    if (headerRow) {
+        var allThs = Array.from(headerRow.querySelectorAll('th'));
+        for (var p = 0; p < HEADER_PRIORITY.length; p++) {
+            for (var h = 0; h < allThs.length; h++) {
+                var hText = (allThs[h].innerText || allThs[h].textContent || '').trim();
+                if (hText === HEADER_PRIORITY[p]) {
+                    if (h < cells.length) {
+                        var span2 = cells[h].querySelector('span');
+                        var val2 = span2
+                            ? (span2.innerText || span2.textContent || '').trim()
+                            : (cells[h].innerText || cells[h].textContent || '').trim();
+                        if (val2) return val2;
+                    }
+                }
+            }
+        }
+    }
     return 'NO_DATE_COL';
 }
 """
