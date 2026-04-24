@@ -680,14 +680,23 @@ JS_SPOT_CHECK_PERIOD = """
         '__xmlview36--202B_EDOI_myDec_LIST',
         '__xmlview41--ExciseList_myDecl_ETP',
         '__xmlview25--202R_ExciseTaxPeriod_LIST',
-        '__xmlview57--202U_ETP_myDec_LIST'
+        '__xmlview57--202U_ETP_myDec_LIST',
+        '__column519',
+        '__column609',
+        '__column657',
+        '__column703'
     ];
     var DOS_COLS = [
         '__xmlview36--202B_DOS_myDec_LIST',
         '__xmlview41--ExciseList_myDecl_DOS',
         '__xmlview25--202R_DateOfSubmission_LIST',
         '__xmlview57--202U_DOS_myDec_LIST',
-        '__xmlview30--203C_DateOfSubmission_LIST_D'
+        '__xmlview30--203C_DateOfSubmission_LIST_D',
+        '__column516',
+        '__column606',
+        '__column654',
+        '__column758',
+        '__column805'
     ];
     var rows = Array.from(table.querySelectorAll('tr')).filter(function(r) {
         return r.querySelector('td');
