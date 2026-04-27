@@ -1,6 +1,10 @@
-# FTA Excise Portal Scraper
+# FTA Excise Portal Scraper v5
 
 Automated tool for downloading declaration reports from the UAE FTA Excise Tax portal. Built for Andersen Consulting internal use.
+
+**v5 changes from v4:**
+- Added EX200 (Excise Tax Return) and Excise 311 (Direct Refunds) declaration types
+- Filter fallback improved: when Approved status returns no records, automatically retries with Warehouse Keeper status before giving up (previously it would give up immediately)
 
 ---
 
