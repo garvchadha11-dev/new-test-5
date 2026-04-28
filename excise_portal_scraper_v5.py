@@ -1654,9 +1654,32 @@ class ExciseScraperApp:
                     continue
 
                 self.root.after(0, lambda a=attempt, t=text: self._log(f"Status input {a}: typing '{t}'", "info"))
-                page.fill(f'[id="{input_id}"]', text)
+                try:
+                    page.fill(f'[id="{input_id}"]', text, timeout=3000)
+                except Exception:
+                    page.evaluate(f"""
+                        (() => {{
+                            var el = document.getElementById({input_id!r});
+                            if (!el) return;
+                            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            setter.call(el, {text!r});
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        }})()
+                    """)
                 self._sleep(0.3)
-                page.press(f'[id="{input_id}"]', "Enter")
+                try:
+                    page.press(f'[id="{input_id}"]', "Enter", timeout=3000)
+                except Exception:
+                    page.evaluate(f"""
+                        (() => {{
+                            var el = document.getElementById({input_id!r});
+                            if (!el) return;
+                            ['keydown','keypress','keyup'].forEach(function(t) {{
+                                el.dispatchEvent(new KeyboardEvent(t, {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
+                            }});
+                        }})()
+                    """)
                 self._sleep(0.5)
                 return True
 
@@ -1738,11 +1761,41 @@ class ExciseScraperApp:
                     self.root.after(0, lambda a=attempt: self._log(f"Search {a}: input not found yet", "info"))
                     self._sleep(1)
                     continue
-                page.fill(f'[id="{input_id}"]', search_term)
+                # Try Playwright fill first (short timeout); if SAP marks element as not visible,
+                # fall back to JS — set value, dispatch input + Enter keydown so SAP fires search
+                filled = False
+                try:
+                    page.fill(f'[id="{input_id}"]', search_term, timeout=3000)
+                    filled = True
+                except Exception:
+                    pass
+                if not filled:
+                    page.evaluate(f"""
+                        (() => {{
+                            var el = document.getElementById({input_id!r});
+                            if (!el) return false;
+                            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            setter.call(el, {search_term!r});
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            return true;
+                        }})()
+                    """)
                 val = page.input_value(f'[id="{input_id}"]')
                 self.root.after(0, lambda v=val, a=attempt: self._log(f"Search {a}: filled '{v}'", "info"))
                 if val.lower() == search_term.lower():
-                    page.press(f'[id="{input_id}"]', "Enter")
+                    try:
+                        page.press(f'[id="{input_id}"]', "Enter", timeout=3000)
+                    except Exception:
+                        page.evaluate(f"""
+                            (() => {{
+                                var el = document.getElementById({input_id!r});
+                                if (!el) return;
+                                ['keydown','keypress','keyup'].forEach(function(t) {{
+                                    el.dispatchEvent(new KeyboardEvent(t, {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
+                                }});
+                            }})()
+                        """)
                     self._sleep(0.3)
                     return True
             except Exception as e:
