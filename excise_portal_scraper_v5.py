@@ -1613,85 +1613,67 @@ class ExciseScraperApp:
             self._sleep(0.5)
         self.root.after(0, lambda: self._log("Busy indicator still present after timeout — continuing anyway", "warning"))
 
-    # ── Filter helpers — real Playwright interactions (visible on screen) ────────
+    # ── Filter helpers ────────────────────────────────────────────────────────
 
-    def _pw_find_status_arrow_id(self, page):
-        return page.evaluate("""
-            () => {
-                var arrows = document.querySelectorAll('span[id$="_combobox-arrow"]');
-                for (var i = 0; i < arrows.length; i++) {
-                    var id = arrows[i].id;
-                    var rect = arrows[i].getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0 && (
-                        id.indexOf('Status_combobox') > -1 ||
-                        id.indexOf('DecStatus_combobox') > -1 ||
-                        id.indexOf('myDecStatus_combobox') > -1 ||
-                        id.indexOf('myDeclStatus_combobox') > -1
-                    )) return id;
-                }
-                for (var i = 0; i < arrows.length; i++) {
-                    if (arrows[i].getBoundingClientRect().width > 0) return arrows[i].id;
-                }
-                return null;
-            }
-        """)
-
-    def _pw_select_status(self, page, desired_text, max_attempts=15):
-        """Click the status combobox arrow and select desired_text via real browser interaction."""
+    def _pw_type_status(self, page, text, max_attempts=15):
+        """Type text directly into the status combobox input and press Enter."""
         for attempt in range(max_attempts):
             try:
-                arrow_id = self._pw_find_status_arrow_id(page)
-                if not arrow_id:
-                    self.root.after(0, lambda a=attempt: self._log(f"Status combo {a}: arrow not visible yet", "info"))
+                input_id = page.evaluate("""
+                    () => {
+                        var inputs = document.querySelectorAll('input[id$="_combobox-inner"]');
+                        for (var i = 0; i < inputs.length; i++) {
+                            var id = inputs[i].id;
+                            var rect = inputs[i].getBoundingClientRect();
+                            if (rect.width > 0 && rect.height > 0 && (
+                                id.indexOf('Status_combobox') > -1 ||
+                                id.indexOf('DecStatus_combobox') > -1 ||
+                                id.indexOf('myDecStatus_combobox') > -1 ||
+                                id.indexOf('myDeclStatus_combobox') > -1
+                            )) return id;
+                        }
+                        for (var i = 0; i < inputs.length; i++) {
+                            if (inputs[i].getBoundingClientRect().width > 0) return inputs[i].id;
+                        }
+                        return null;
+                    }
+                """)
+                if not input_id:
+                    self.root.after(0, lambda a=attempt: self._log(f"Status input {a}: not visible yet", "info"))
                     self._sleep(1)
                     continue
 
-                self.root.after(0, lambda a=attempt: self._log(f"Status combo {a}: clicking arrow", "info"))
-                page.locator(f'[id="{arrow_id}"]').click(timeout=3000)
-
-                try:
-                    page.wait_for_selector('li[role="option"]', state='visible', timeout=5000)
-                except Exception:
-                    self.root.after(0, lambda a=attempt: self._log(f"Status combo {a}: popup did not open", "info"))
-                    self._sleep(1)
-                    continue
-
-                options = page.locator('li[role="option"]')
-                count = options.count()
-                found = False
-                for idx in range(count):
-                    opt = options.nth(idx)
-                    txt = (opt.text_content() or "").strip()
-                    if desired_text.lower() in txt.lower():
-                        opt.click(timeout=3000)
-                        self.root.after(0, lambda t=txt, a=attempt: self._log(f"Status combo {a}: selected '{t}'", "info"))
-                        found = True
-                        break
-
-                if not found:
-                    self.root.after(0, lambda a=attempt, d=desired_text: self._log(f"Status combo {a}: '{d}' not in option list", "warning"))
-                    try:
-                        page.keyboard.press("Escape")
-                    except Exception:
-                        pass
-                    return "NO_OPTION"
-
+                self.root.after(0, lambda a=attempt, t=text: self._log(f"Status input {a}: typing '{t}'", "info"))
+                page.fill(f'[id="{input_id}"]', text)
+                self._sleep(0.3)
+                page.press(f'[id="{input_id}"]', "Enter")
                 self._sleep(0.5)
                 return True
 
             except Exception as e:
-                self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Status combo {a} error: {e}", "info"))
+                self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Status input {a} error: {e}", "info"))
                 self._sleep(1)
 
-        return "NO_COMBO"
+        return False
 
     def _pw_fill_search(self, page, search_term, max_attempts=15):
-        """Fill the visible search input via real Playwright interaction."""
+        """Fill the visible search input."""
         for attempt in range(max_attempts):
             try:
-                inp = page.locator('input[type="search"]').first()
-                inp.fill(search_term, timeout=2000)
-                val = inp.input_value(timeout=2000)
+                input_id = page.evaluate("""
+                    () => {
+                        var all = document.querySelectorAll('input[type="search"]');
+                        for (var i = 0; i < all.length; i++) {
+                            if (all[i].getBoundingClientRect().width > 0) return all[i].id;
+                        }
+                        return null;
+                    }
+                """)
+                if not input_id:
+                    self._sleep(1)
+                    continue
+                page.fill(f'[id="{input_id}"]', search_term)
+                val = page.input_value(f'[id="{input_id}"]')
                 self.root.after(0, lambda v=val, a=attempt: self._log(f"Search {a}: filled '{v}'", "info"))
                 if val.lower() == search_term.lower():
                     return True
@@ -1700,77 +1682,35 @@ class ExciseScraperApp:
             self._sleep(1)
         return False
 
-    def _pw_set_page_size(self, page, size="1000"):
-        """Click the page-size combobox and select the given size via real Playwright interaction."""
-        try:
-            arrow_id = page.evaluate("""
-                () => {
-                    var arrows = document.querySelectorAll('span[id*="perpage-arrow"][role="button"]');
-                    for (var i = 0; i < arrows.length; i++) {
-                        if (arrows[i].getBoundingClientRect().width > 0) return arrows[i].id;
-                    }
-                    return null;
-                }
-            """)
-            if not arrow_id:
-                return False
-            page.locator(f'[id="{arrow_id}"]').click(timeout=3000)
-            page.wait_for_selector('li[role="option"]', state='visible', timeout=5000)
-            options = page.locator('li[role="option"]')
-            for idx in range(options.count()):
-                opt = options.nth(idx)
-                if (opt.text_content() or "").strip() == size:
-                    opt.click(timeout=3000)
-                    self._sleep(0.5)
-                    self.root.after(0, lambda s=size: self._log(f"Page size set to {s}", "info"))
-                    return True
-        except Exception as e:
-            self.root.after(0, lambda e=str(e): self._log(f"Page size error: {e}", "info"))
-        return False
-
-    def _pw_click_go(self, page):
-        """Click the visible Go button via real Playwright interaction."""
-        try:
-            go = page.locator('button').filter(has=page.locator('bdi', has_text='Go')).first()
-            go.click(timeout=3000)
-            self.root.after(0, lambda: self._log("Go button clicked", "info"))
-            return True
-        except Exception as e:
-            self.root.after(0, lambda e=str(e): self._log(f"Go button error: {e}", "info"))
-            return False
-
     # ── ApplyFilters ──────────────────────────────────────────────────────────
 
     def _apply_filters(self, page, search_term):
         search_term = search_term.lower()
         self._sleep(3)
 
-        # ── Search (real Playwright fill — visible on screen) ──
+        # ── Search ──
         search_ok = self._pw_fill_search(page, search_term)
         if not search_ok:
             self.root.after(0, lambda: self._log("Search did not verify — continuing anyway", "warning"))
 
-        # ── Status → Approved (real Playwright click — visible on screen) ──
-        status_result = self._pw_select_status(page, "Approved")
-
-        if status_result == "NO_COMBO":
-            self.root.after(0, lambda: self._log("Status combo not available — skipping panel", "warning"))
+        # ── Status → type "Approved" directly into the status field ──
+        status_ok = self._pw_type_status(page, "Approved")
+        if not status_ok:
+            self.root.after(0, lambda: self._log("Status field not available — skipping panel", "warning"))
             return "NO_COMBO"
 
-        if status_result == "NO_OPTION":
-            self.root.after(0, lambda: self._log("No Approved option — trying warehouse keeper", "info"))
-            return "TRY_WAREHOUSE"
-
-        if status_result is not True:
-            self.root.after(0, lambda: self._log("Status combo failed — trying warehouse keeper", "info"))
-            return "TRY_WAREHOUSE"
-
         # ── Page size → 1000 ──
-        self._pw_set_page_size(page, "1000")
+        for attempt in range(4):
+            pv = page.evaluate(JS_SET_PAGE_1000)
+            self.root.after(0, lambda v=pv, a=attempt: self._log(f"Page size attempt {a}: {v}", "info"))
+            if pv == "1000":
+                break
+            self._sleep(1)
         self._sleep(1)
 
         # ── Click Go ──
-        self._pw_click_go(page)
+        go_result = page.evaluate(JS_CLICK_GO)
+        self.root.after(0, lambda r=go_result: self._log(f"Go button: {r}", "info"))
         self._sleep(3)
 
         # ── Poll every 0.5s up to 30s ──
@@ -1794,17 +1734,19 @@ class ExciseScraperApp:
         search_term = search_term.lower()
         self.root.after(0, lambda: self._log("Trying warehouse keeper status...", "info"))
 
-        wh = self._pw_select_status(page, "Warehouse", max_attempts=4)
-        if wh != True:
+        # ── Type "Approved by Warehouse Keeper" directly into the status field ──
+        wh_ok = self._pw_type_status(page, "Approved by Warehouse Keeper", max_attempts=4)
+        if not wh_ok:
             self.root.after(0, lambda: self._log("Warehouse status not available — no data", "warning"))
             return False
 
         self._sleep(1)
         self._pw_fill_search(page, search_term)
         self._sleep(1)
-        self._pw_set_page_size(page, "1000")
+        page.evaluate(JS_SET_PAGE_1000)
         self._sleep(1)
-        self._pw_click_go(page)
+        go_result = page.evaluate(JS_CLICK_GO)
+        self.root.after(0, lambda r=go_result: self._log(f"Warehouse Go: {r}", "info"))
         self._sleep(1)
 
         check = "NO_DATA"
