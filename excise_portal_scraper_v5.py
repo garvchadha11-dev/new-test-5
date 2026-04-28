@@ -1813,9 +1813,14 @@ class ExciseScraperApp:
         page.evaluate(JS_FIND_TABLE)
 
         # ── Search ──
+        # If the month search field can't be filled and verified, skip this month
+        # rather than continuing — otherwise the status filter would run against
+        # all months and the spot-check downstream may not catch the mismatch.
         search_ok = self._pw_fill_search(page, search_term)
         if not search_ok:
-            self.root.after(0, lambda: self._log("Search did not verify — continuing anyway", "warning"))
+            self.root.after(0, lambda: self._log(
+                "Month search did not verify — skipping (would download wrong months)", "warning"))
+            return False
 
         # ── Status → type "Approved" directly into the status field ──
         status_ok = self._pw_type_status(page, "Approved")
