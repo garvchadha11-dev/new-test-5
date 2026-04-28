@@ -1632,38 +1632,7 @@ class ExciseScraperApp:
             try:
                 input_id = page.evaluate("""
                     () => {
-                        var tableId = String(window.__PAD_TABLE_ID || '');
-                        var viewPrefix = '';
-                        if (tableId) {
-                            var dash = tableId.indexOf('--');
-                            if (dash > -1) viewPrefix = tableId.substring(0, dash + 2);
-                        }
-                        // Exact status combobox inner input IDs sourced from portal DOM
-                        var STATUS_IDS = {
-                            '__xmlview19--': ['__xmlview19--_201X_Status_combobox-inner'],
-                            '__xmlview36--': ['__xmlview36--_202B_Status_combobox-inner'],
-                            '__xmlview41--': ['__xmlview41--ExciseList_myDeclStatus_combobox-inner'],
-                            '__xmlview47--': ['__xmlview47--_203H_List_table_combobox-inner'],
-                            '__xmlview25--': ['__xmlview25--_202R_Status_combobox-inner'],
-                            '__xmlview52--': ['__xmlview52--_202S_Status_combobox-inner'],
-                            '__xmlview68--': ['__xmlview68--_202W_Status_combobox-inner'],
-                            '__xmlview35--': ['__xmlview35--_202W_Status_combobox-inner'],
-                            '__xmlview73--': ['__xmlview73--_203B_Declaration_ListStatus_combobox-inner'],
-                            '__xmlview30--': ['__xmlview30--_203C_myDecStatus_combobox-inner', '__xmlview30--_202V_Status_combobox-inner'],
-                            '__xmlview84--': ['__xmlview84--_203G_Status_combobox-inner'],
-                            '__xmlview40--': ['__xmlview40--_204X_Status_combobox-inner']
-                        };
                         var inputs = document.querySelectorAll('input[id$="_combobox-inner"]');
-                        // Pass 1: exact hardcoded lookup
-                        if (viewPrefix && STATUS_IDS[viewPrefix]) {
-                            var candidates = STATUS_IDS[viewPrefix];
-                            for (var j = 0; j < candidates.length; j++) {
-                                for (var i = 0; i < inputs.length; i++) {
-                                    if (inputs[i].id === candidates[j] && inputs[i].getBoundingClientRect().width > 0) return inputs[i].id;
-                                }
-                            }
-                        }
-                        // Pass 2: any visible Status combobox inner in same view
                         for (var i = 0; i < inputs.length; i++) {
                             var id = inputs[i].id;
                             var rect = inputs[i].getBoundingClientRect();
@@ -1674,7 +1643,6 @@ class ExciseScraperApp:
                                 id.indexOf('myDeclStatus_combobox') > -1
                             )) return id;
                         }
-                        // Pass 3: any visible combobox inner
                         for (var i = 0; i < inputs.length; i++) {
                             if (inputs[i].getBoundingClientRect().width > 0) return inputs[i].id;
                         }
@@ -1713,31 +1681,27 @@ class ExciseScraperApp:
                         }
                         // Exact panel search input IDs sourced from portal DOM
                         var SEARCH_IDS = {
-                            '__xmlview19--': ['__xmlview19--_201X_search_searchField-I'],
-                            '__xmlview36--': ['__xmlview36--202B_Search-I'],
-                            '__xmlview41--': ['__xmlview41--ExciseList_myDeclSearch_searchField-I'],
-                            '__xmlview47--': ['__xmlview47--_203H_List_table_searchField-I'],
-                            '__xmlview25--': ['__xmlview25--_202R_Status_searchbar-I'],
-                            '__xmlview52--': ['__xmlview52--202S_Search-I'],
-                            '__xmlview68--': ['__xmlview68--202W_Search-I'],
-                            '__xmlview35--': ['__xmlview35--202W_Search-I'],
-                            '__xmlview73--': ['__xmlview73--_203B_Declaration_ListSearch_searchField-I'],
-                            '__xmlview30--': ['__xmlview30--_203C_myDecSearch_searchField-I', '__xmlview30--202V_Search-I'],
-                            '__xmlview84--': ['__xmlview84--203G_Search-I'],
-                            '__xmlview40--': ['__xmlview40--204X_Search-I']
+                            '__xmlview19--': '__xmlview19--_201X_search_searchField-I',
+                            '__xmlview36--': '__xmlview36--202B_Search-I',
+                            '__xmlview41--': '__xmlview41--ExciseList_myDeclSearch_searchField-I',
+                            '__xmlview47--': '__xmlview47--_203H_List_table_searchField-I',
+                            '__xmlview25--': '__xmlview25--_202R_Status_searchbar-I',
+                            '__xmlview52--': '__xmlview52--202S_Search-I',
+                            '__xmlview68--': '__xmlview68--202W_Search-I',
+                            '__xmlview73--': '__xmlview73--_203B_Declaration_ListSearch_searchField-I',
+                            '__xmlview30--': '__xmlview30--_203C_myDecSearch_searchField-I',
+                            '__xmlview84--': '__xmlview84--203G_Search-I',
+                            '__xmlview35--': '__xmlview35--202W_Search-I',
+                            '__xmlview40--': '__xmlview40--204X_Search-I'
                         };
                         var all = document.querySelectorAll('input[type="search"]');
                         var el = null;
-                        // Pass 1: exact hardcoded IDs for this panel (array — handles shared view prefixes)
+                        // Pass 1: exact hardcoded ID for this panel
                         if (viewPrefix && SEARCH_IDS[viewPrefix]) {
-                            var candidates = SEARCH_IDS[viewPrefix];
-                            for (var j = 0; j < candidates.length; j++) {
-                                for (var i = 0; i < all.length; i++) {
-                                    if (all[i].id === candidates[j] && all[i].getBoundingClientRect().width > 0) {
-                                        el = all[i]; break;
-                                    }
+                            for (var i = 0; i < all.length; i++) {
+                                if (all[i].id === SEARCH_IDS[viewPrefix] && all[i].getBoundingClientRect().width > 0) {
+                                    el = all[i]; break;
                                 }
-                                if (el) break;
                             }
                         }
                         // Pass 2: same-view _searchField-I pattern
