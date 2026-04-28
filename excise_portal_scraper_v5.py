@@ -1752,6 +1752,9 @@ class ExciseScraperApp:
         search_term = search_term.lower()
         self._sleep(3)
 
+        # Establish __PAD_TABLE_ID so SEARCH_IDS view-prefix lookup works in _pw_fill_search
+        page.evaluate(JS_FIND_TABLE)
+
         # ── Search ──
         search_ok = self._pw_fill_search(page, search_term)
         if not search_ok:
