@@ -439,36 +439,15 @@ JS_SET_PAGE_1000 = """
 
 JS_CLICK_GO = """
 () => {
-    var tableId = String(window.__PAD_TABLE_ID || '');
-    var viewPrefix = '';
-    if (tableId) { var d = tableId.indexOf('--'); if (d > -1) viewPrefix = tableId.substring(0, d + 2); }
-    // Pass 1: visible Go button in same view
-    var buttons = document.querySelectorAll('button');
-    for (var i = 0; i < buttons.length; i++) {
-        if (viewPrefix && buttons[i].id.indexOf(viewPrefix) === -1) continue;
-        var bdi = buttons[i].querySelector('bdi');
-        if (bdi && bdi.textContent.trim() === 'Go' && buttons[i].getBoundingClientRect().width > 0) {
-            var sapBtn = sap.ui.getCore().byId(buttons[i].id);
-            if (sapBtn && sapBtn.firePress) { sapBtn.firePress(); return 'SUCCESS'; }
-            buttons[i].click(); return 'CLICKED';
-        }
-    }
-    // Pass 2: Go button in toolbar overflow (hidden) — fire via SAP API using known ID pattern
-    if (tableId) {
-        var sapTableId = tableId.replace('-listUl', '');
-        var goId = sapTableId + '_Go';
-        var goBtn = sap.ui.getCore().byId(goId);
-        if (goBtn && goBtn.firePress) { goBtn.firePress(); return 'SUCCESS_OVERFLOW'; }
-    }
-    // Pass 3: any Go button in same view, visible or not
-    for (var i = 0; i < buttons.length; i++) {
-        if (viewPrefix && buttons[i].id.indexOf(viewPrefix) === -1) continue;
-        var bdi = buttons[i].querySelector('bdi');
-        if (bdi && bdi.textContent.trim() === 'Go') {
-            var sapBtn = sap.ui.getCore().byId(buttons[i].id);
-            if (sapBtn && sapBtn.firePress) { sapBtn.firePress(); return 'SUCCESS_HIDDEN'; }
-        }
-    }
+    // Most panels have NO visible Go button — fireSearch + fireChange already
+    // refresh the table. For the few that do (EX201, EX203_ML, EX203C), fire
+    // their button via SAP's firePress. Discovery already captured the id.
+    var goId = window.__PAD_GO_BUTTON_ID;
+    if (!goId) return 'NO_GO_BUTTON';
+    var sapBtn = sap.ui.getCore().byId(goId);
+    if (sapBtn && sapBtn.firePress) { sapBtn.firePress(); return 'SUCCESS'; }
+    var domBtn = document.getElementById(goId);
+    if (domBtn) { domBtn.click(); return 'CLICKED'; }
     return 'FAIL';
 }
 """
@@ -515,68 +494,47 @@ JS_CHECK_NO_DATA = """
 
 JS_FIND_TABLE = """
 () => {
+    // Active-panel discovery — verified across all 18 declaration panels.
+    // Predicate: a visible-on-viewport <table> whose view prefix also contains
+    // a visible search input AND a visible status combobox is the active panel.
+    // SAP keeps stale panels mounted but pushes them to negative x coordinates.
     var b = document.querySelector('.sapUiLocalBusyIndicatorAnimation');
     if (b && b.getBoundingClientRect().width > 0) return 'TABLE_NOT_FOUND';
-    function _visibleTable(t) {
-        var r = t.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
+
+    function onScreen(el) {
+        if (!el) return false;
+        var r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return false;
+        if (r.right < 0 || r.left > window.innerWidth) return false;
+        return true;
     }
-    // Pass 0: hardcoded tblHeader row IDs sourced from portal DOM — most reliable
-    var HEADER_ROW_IDS = [
-        '__xmlview19--_201X_List_table-tblHeader',
-        '__xmlview36--_202B_List_table-tblHeader',
-        '__xmlview41--ExciseList_myDecl_Table-tblHeader',
-        '__xmlview47--_203H_List_table-tblHeader',
-        '__xmlview25--_202R_DeclarationList_table-tblHeader',
-        '__xmlview52--_202S_Declaration_List_table-tblHeader',
-        '__xmlview57--202UExciseList_myDecl_Table-tblHeader',
-        '__xmlview63--_202V_Declaration_List_table-tblHeader',
-        '__xmlview68--_202W_Declaration_List_table-tblHeader',
-        '__xmlview73--_203B_Declaration_List_table-tblHeader',
-        '__xmlview30--203CExciseList_myDecl_Table-tblHeader',
-        '__xmlview79--_204X_Declaration_List_table-tblHeader',
-        '__xmlview84--_203G_Declaration_List_table-tblHeader',
-        '__xmlview30--_202V_Declaration_List_table-tblHeader',
-        '__xmlview35--_202W_Declaration_List_table-tblHeader',
-        '__xmlview40--_204X_Declaration_List_table-tblHeader'
-    ];
-    for (var h = 0; h < HEADER_ROW_IDS.length; h++) {
-        var hrow = document.getElementById(HEADER_ROW_IDS[h]);
-        if (hrow && _visibleTable(hrow)) {
-            var tbl = hrow.closest('table');
-            if (tbl && tbl.id) { window.__PAD_TABLE_ID = tbl.id; return tbl.id; }
-        }
+
+    var allTables = Array.from(document.querySelectorAll('table[id*="-listUl"]')).filter(onScreen);
+    for (var i = 0; i < allTables.length; i++) {
+        var t = allTables[i];
+        var dash = t.id.indexOf('--');
+        if (dash < 0) continue;
+        var prefix = t.id.substring(0, dash + 2);
+        var search = Array.from(document.querySelectorAll('input[type="search"]'))
+            .filter(function(el){ return el.id.indexOf(prefix) === 0 && onScreen(el); })[0];
+        var statusInner = Array.from(document.querySelectorAll('input[id$="_combobox-inner"]'))
+            .filter(function(el){ return el.id.indexOf(prefix) === 0 && onScreen(el); })[0];
+        if (!search || !statusInner) continue;
+
+        var goBtn = Array.from(document.querySelectorAll('button')).filter(function(btn) {
+            if (btn.id.indexOf(prefix) !== 0) return false;
+            var bdi = btn.querySelector('bdi');
+            return bdi && bdi.textContent.trim() === 'Go' && onScreen(btn);
+        })[0];
+
+        window.__PAD_TABLE_ID = t.id;
+        window.__PAD_PREFIX = prefix;
+        window.__PAD_SEARCH_CONTROL_ID = search.id.replace(/-I$/, '');
+        window.__PAD_STATUS_CONTROL_ID = statusInner.id.replace(/-inner$/, '');
+        window.__PAD_GO_BUTTON_ID = goBtn ? goBtn.id : null;
+        return t.id;
     }
-    // Pass 1: known SAP list-table ID patterns
-    var tables = document.querySelectorAll("table[id*='_Table-listUl'], table[id*='_List_table-listUl'], table[id*='-listUl']");
-    for (var t = 0; t < tables.length; t++) {
-        if (_visibleTable(tables[t]) && tables[t].id) {
-            window.__PAD_TABLE_ID = tables[t].id;
-            return tables[t].id;
-        }
-    }
-    // Pass 2: any visible SAP table (has sapMListTblHeaderCell th) — catches ETP/myDec_LIST style IDs
-    var allTables = document.querySelectorAll("table");
-    for (var t = 0; t < allTables.length; t++) {
-        if (!_visibleTable(allTables[t]) || !allTables[t].id) continue;
-        if (allTables[t].querySelector("th.sapMListTblHeaderCell")) {
-            window.__PAD_TABLE_ID = allTables[t].id;
-            return allTables[t].id;
-        }
-    }
-    // Pass 3: header text fallback
-    for (var t = 0; t < allTables.length; t++) {
-        if (!_visibleTable(allTables[t])) continue;
-        var headers = allTables[t].querySelectorAll("th");
-        for (var h = 0; h < headers.length; h++) {
-            var txt = headers[h].innerText.trim();
-            if (txt === "Transaction Number" || txt === "Excise Tax Period" || txt === "Declaration Number") {
-                window.__PAD_TABLE_ID = allTables[t].id;
-                return allTables[t].id;
-            }
-        }
-    }
-    return "TABLE_NOT_FOUND";
+    return 'TABLE_NOT_FOUND';
 }
 """
 
@@ -1626,180 +1584,72 @@ class ExciseScraperApp:
     # ── Filter helpers ────────────────────────────────────────────────────────
 
     def _pw_type_status(self, page, text, max_attempts=15):
-        """Type text directly into the status combobox input and press Enter."""
-        for attempt in range(max_attempts):
-            try:
-                input_id = page.evaluate("""
-                    () => {
-                        var inputs = document.querySelectorAll('input[id$="_combobox-inner"]');
-                        for (var i = 0; i < inputs.length; i++) {
-                            var id = inputs[i].id;
-                            var rect = inputs[i].getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0 && (
-                                id.indexOf('Status_combobox') > -1 ||
-                                id.indexOf('DecStatus_combobox') > -1 ||
-                                id.indexOf('myDecStatus_combobox') > -1 ||
-                                id.indexOf('myDeclStatus_combobox') > -1
-                            )) return id;
-                        }
-                        for (var i = 0; i < inputs.length; i++) {
-                            if (inputs[i].getBoundingClientRect().width > 0) return inputs[i].id;
-                        }
-                        return null;
-                    }
-                """)
-                if not input_id:
-                    self.root.after(0, lambda a=attempt: self._log(f"Status input {a}: not visible yet", "info"))
-                    self._sleep(1)
-                    continue
+        """Apply the Status filter via SAP's ComboBox API: setSelectedItem + fireChange.
 
-                self.root.after(0, lambda a=attempt, t=text: self._log(f"Status input {a}: typing '{t}'", "info"))
-                try:
-                    page.fill(f'[id="{input_id}"]', text, timeout=3000)
-                except Exception:
-                    page.evaluate(f"""
-                        (() => {{
-                            var el = document.getElementById({input_id!r});
-                            if (!el) return;
-                            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                            setter.call(el, {text!r});
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                        }})()
-                    """)
-                self._sleep(0.3)
-                try:
-                    page.press(f'[id="{input_id}"]', "Enter", timeout=3000)
-                except Exception:
-                    page.evaluate(f"""
-                        (() => {{
-                            var el = document.getElementById({input_id!r});
-                            if (!el) return;
-                            ['keydown','keypress','keyup'].forEach(function(t) {{
-                                el.dispatchEvent(new KeyboardEvent(t, {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
-                            }});
-                        }})()
-                    """)
+        Returns True if the requested status was found and applied.
+        Returns 'NO_MATCH' if items loaded but the requested text isn't in the list.
+        Returns False if the combobox or items never resolved.
+        """
+        for attempt in range(max_attempts):
+            result = page.evaluate(f"""
+                (() => {{
+                    var cbId = window.__PAD_STATUS_CONTROL_ID;
+                    if (!cbId) return 'NO_CONTROL_ID';
+                    var cb = sap.ui.getCore().byId(cbId);
+                    if (!cb) return 'CONTROL_NOT_FOUND';
+                    // Open the dropdown so lazy-loaded items mount, then operate on getItems().
+                    try {{ cb.open(); }} catch (e) {{}}
+                    var items = (cb.getItems && cb.getItems()) || [];
+                    if (items.length <= 1) return 'ITEMS_NOT_LOADED';
+                    var target = {text!r};
+                    var match = items.find(function(it) {{ return it.getText() === target; }});
+                    if (!match) {{
+                        // Close the dropdown if we won't use it
+                        try {{ cb.close(); }} catch (e) {{}}
+                        return 'NO_MATCH:' + items.map(function(it){{ return it.getText(); }}).join('|');
+                    }}
+                    cb.setSelectedItem(match);
+                    cb.setValue(match.getText());
+                    cb.fireChange({{ value: match.getText(), itemPressed: true }});
+                    cb.fireSelectionChange({{ selectedItem: match }});
+                    try {{ cb.close(); }} catch (e) {{}}
+                    return 'OK';
+                }})()
+            """)
+            self.root.after(0, lambda r=result, a=attempt, t=text: self._log(
+                f"Status {a}: {t} → {r}", "info"))
+            if result == 'OK':
                 self._sleep(0.5)
                 return True
-
-            except Exception as e:
-                self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Status input {a} error: {e}", "info"))
-                self._sleep(1)
-
+            if isinstance(result, str) and result.startswith('NO_MATCH'):
+                return 'NO_MATCH'
+            self._sleep(1)
         return False
 
-    def _pw_fill_search(self, page, search_term, max_attempts=15):
-        """Fill the panel-specific search input and press Enter to fire SAP's search event."""
+    def _pw_fill_search(self, page, search_term, max_attempts=8):
+        """Apply the month filter via SAP's SearchField API: setValue + fireSearch.
+
+        No DOM events, no focus, no visibility races — SAP applies the filter
+        from its own model. Verified across all 18 declaration panels.
+        """
         for attempt in range(max_attempts):
-            try:
-                input_id = page.evaluate("""
-                    () => {
-                        var tableId = String(window.__PAD_TABLE_ID || '');
-                        var viewPrefix = '';
-                        if (tableId) {
-                            var dash = tableId.indexOf('--');
-                            if (dash > -1) viewPrefix = tableId.substring(0, dash + 2);
-                        }
-                        // Exact panel search input IDs sourced from portal DOM
-                        var SEARCH_IDS = {
-                            '__xmlview19--': '__xmlview19--_201X_search_searchField-I',
-                            '__xmlview36--': '__xmlview36--202B_Search-I',
-                            '__xmlview41--': '__xmlview41--ExciseList_myDeclSearch_searchField-I',
-                            '__xmlview47--': '__xmlview47--_203H_List_table_searchField-I',
-                            '__xmlview25--': '__xmlview25--_202R_Status_searchbar-I',
-                            '__xmlview52--': '__xmlview52--202S_Search-I',
-                            '__xmlview68--': '__xmlview68--202W_Search-I',
-                            '__xmlview73--': '__xmlview73--_203B_Declaration_ListSearch_searchField-I',
-                            '__xmlview30--': '__xmlview30--_203C_myDecSearch_searchField-I',
-                            '__xmlview84--': '__xmlview84--203G_Search-I',
-                            '__xmlview35--': '__xmlview35--202W_Search-I',
-                            '__xmlview40--': '__xmlview40--204X_Search-I'
-                        };
-                        var all = document.querySelectorAll('input[type="search"]');
-                        var el = null;
-                        // Pass 1: exact hardcoded ID for this panel
-                        if (viewPrefix && SEARCH_IDS[viewPrefix]) {
-                            for (var i = 0; i < all.length; i++) {
-                                if (all[i].id === SEARCH_IDS[viewPrefix] && all[i].getBoundingClientRect().width > 0) {
-                                    el = all[i]; break;
-                                }
-                            }
-                        }
-                        // Pass 2: same-view _searchField-I pattern
-                        if (!el) {
-                            for (var i = 0; i < all.length; i++) {
-                                var id = all[i].id;
-                                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
-                                if (id.indexOf('_searchField-I') > -1 && all[i].getBoundingClientRect().width > 0) {
-                                    el = all[i]; break;
-                                }
-                            }
-                        }
-                        // Pass 3: same-view Search-I (excluding global searchbar)
-                        if (!el) {
-                            for (var i = 0; i < all.length; i++) {
-                                var id = all[i].id;
-                                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
-                                if (id.indexOf('Search-I') > -1 && id.indexOf('searchbar') === -1 && all[i].getBoundingClientRect().width > 0) {
-                                    el = all[i]; break;
-                                }
-                            }
-                        }
-                        // Pass 4: any visible search input in same view
-                        if (!el) {
-                            for (var i = 0; i < all.length; i++) {
-                                var id = all[i].id;
-                                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
-                                if (all[i].getBoundingClientRect().width > 0) { el = all[i]; break; }
-                            }
-                        }
-                        return el ? el.id : null;
-                    }
-                """)
-                if not input_id:
-                    self.root.after(0, lambda a=attempt: self._log(f"Search {a}: input not found yet", "info"))
-                    self._sleep(1)
-                    continue
-                # Try Playwright fill first (short timeout); if SAP marks element as not visible,
-                # fall back to JS — set value, dispatch input + Enter keydown so SAP fires search
-                filled = False
-                try:
-                    page.fill(f'[id="{input_id}"]', search_term, timeout=3000)
-                    filled = True
-                except Exception:
-                    pass
-                if not filled:
-                    page.evaluate(f"""
-                        (() => {{
-                            var el = document.getElementById({input_id!r});
-                            if (!el) return false;
-                            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                            setter.call(el, {search_term!r});
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            return true;
-                        }})()
-                    """)
-                val = page.input_value(f'[id="{input_id}"]')
-                self.root.after(0, lambda v=val, a=attempt: self._log(f"Search {a}: filled '{v}'", "info"))
-                if val.lower() == search_term.lower():
-                    try:
-                        page.press(f'[id="{input_id}"]', "Enter", timeout=3000)
-                    except Exception:
-                        page.evaluate(f"""
-                            (() => {{
-                                var el = document.getElementById({input_id!r});
-                                if (!el) return;
-                                ['keydown','keypress','keyup'].forEach(function(t) {{
-                                    el.dispatchEvent(new KeyboardEvent(t, {{ key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }}));
-                                }});
-                            }})()
-                        """)
-                    self._sleep(0.3)
-                    return True
-            except Exception as e:
-                self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Search {a} error: {e}", "info"))
+            result = page.evaluate(f"""
+                (() => {{
+                    var sfId = window.__PAD_SEARCH_CONTROL_ID;
+                    if (!sfId) return 'NO_CONTROL_ID';
+                    var sf = sap.ui.getCore().byId(sfId);
+                    if (!sf) return 'CONTROL_NOT_FOUND';
+                    var q = {search_term!r};
+                    sf.setValue(q);
+                    sf.fireSearch({{ query: q }});
+                    return sf.getValue() === q ? 'OK' : 'VALUE_MISMATCH:' + sf.getValue();
+                }})()
+            """)
+            self.root.after(0, lambda r=result, a=attempt, t=search_term: self._log(
+                f"Search {a}: {t} → {r}", "info"))
+            if result == 'OK':
+                self._sleep(0.3)
+                return True
             self._sleep(1)
         return False
 
@@ -1822,8 +1672,12 @@ class ExciseScraperApp:
                 "Month search did not verify — skipping (would download wrong months)", "warning"))
             return False
 
-        # ── Status → type "Approved" directly into the status field ──
+        # ── Status → select "Approved" via SAP ComboBox API ──
         status_ok = self._pw_type_status(page, "Approved")
+        if status_ok == 'NO_MATCH':
+            # Combo loaded but "Approved" isn't an available option — try warehouse fallback
+            self.root.after(0, lambda: self._log("'Approved' not in status options — trying warehouse keeper", "info"))
+            return "TRY_WAREHOUSE"
         if not status_ok:
             self.root.after(0, lambda: self._log("Status field not available — skipping panel", "warning"))
             return "NO_COMBO"
