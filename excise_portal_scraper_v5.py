@@ -616,14 +616,22 @@ JS_GET_ROW_COUNT = """
         var n = sapTable.getItems().length;
         if (n > 0) return String(n);
     }
-    // Fallback 4: count visible data rows directly in the DOM table
+    // Fallback 4: count data rows directly in the DOM table (no height check — off-screen rows still count)
     var domTable = document.getElementById(tableId);
     if (domTable) {
         var dataRows = Array.from(domTable.querySelectorAll('tr')).filter(function(r) {
-            return r.querySelector('td') && r.getBoundingClientRect().height > 0;
+            return r.querySelector('td');
         });
         if (dataRows.length > 0) return 'DOM:' + String(dataRows.length);
     }
+    // Fallback 5: count SAP row elements by CSS class — same method JS_CHECK_NO_DATA uses for HAS_DATA
+    var sapRows = document.querySelectorAll('tr.sapMLIBActive, tr.sapMListTblRow');
+    var visibleSapRows = 0;
+    for (var i = 0; i < sapRows.length; i++) {
+        var rr = sapRows[i].getBoundingClientRect();
+        if (rr.width > 0 && rr.height > 0) visibleSapRows++;
+    }
+    if (visibleSapRows > 0) return 'DOM:' + String(visibleSapRows);
     return "0";
 }
 """
