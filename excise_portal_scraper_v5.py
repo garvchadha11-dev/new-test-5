@@ -479,7 +479,7 @@ JS_CHECK_NO_DATA = """
     var busy = document.querySelector('.sapUiLocalBusyIndicatorAnimation');
     if (busy && busy.getBoundingClientRect().width > 0) return 'NO_DATA';
 
-    // 2. Check for actual data FIRST — SAP binding
+    // 2. Check SAP binding for actual records
     var tableId = String(window.__PAD_TABLE_ID || '');
     if (tableId) {
         var sapTableId = tableId.replace('-listUl', '');
@@ -493,23 +493,19 @@ JS_CHECK_NO_DATA = """
         }
     }
 
-    // 3. Check for visible data rows in DOM
+    // 3. Check for visible data rows in DOM (skip the nodata placeholder row)
     var rows = document.querySelectorAll('tr.sapMLIBActive, tr.sapMListTblRow');
     for (var r = 0; r < rows.length; r++) {
-        var rr = rows[r].getBoundingClientRect();
+        var row = rows[r];
+        // Skip the placeholder row that holds the "No records found" cell
+        if (row.id && row.id.indexOf('nodata') > -1) continue;
+        if (row.querySelector("td[id*='nodata-text']")) continue;
+        var rr = row.getBoundingClientRect();
         if (rr.width > 0 && rr.height > 0) return 'HAS_DATA';
     }
 
-    // 4. Only check "No records found" AFTER confirming no data exists
-    var noData = document.querySelectorAll("td[id*='nodata-text']");
-    for (var i = 0; i < noData.length; i++) {
-        var rect = noData[i].getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-            if (noData[i].textContent.indexOf("No records found") > -1) return "NO_RECORDS";
-        }
-    }
-
-    return 'NO_DATA';
+    // No data rows found in the table — nothing to download
+    return 'NO_RECORDS';
 }
 """
 
