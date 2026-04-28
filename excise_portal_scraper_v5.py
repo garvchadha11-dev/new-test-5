@@ -61,7 +61,6 @@ except ImportError:
 
 # ── PANEL MAP (key → panel_id, export_label, folder_name) ────────────────────
 PANEL_MAP = {
-    "EX200":              ("1-0",  "Excise Tax Return Report",                              "EX200"),
     "EX201_ML":           ("2-0",  "Import Declaration Report",                             "EX201_ML"),
     "EX202A_Release":     ("3-0",  "Release Goods from DZ Report",                          "EX202A_Release_Goods_From_DZ"),
     "EX202A_Consumption": ("3-1",  "Consumption of Goods Within DZ Report",                 "EX202A_Consumption_Within_DZ"),
@@ -80,12 +79,9 @@ PANEL_MAP = {
     "EX203G":             ("3-11", "TOO DZ Non-Reg Seller to Reg Purchaser Report",         "EX203G"),
     "EX203H":             ("2-5",  "Local Purchase Form EX203H Report",                     "EX203H"),
     "EX204":              ("3-10", "Opening Stock Declaration Report",                      "EX204"),
-    "Excise311":          ("1-1",  "Direct Refunds Report",                                 "Excise311"),
-    "AdminExceptions":    ("4-0",  "Administrative Exceptions Report",                      "AdminExceptions"),
 }
 
 DECL_LABELS = {
-    "EX200":              "EX200 - Excise Tax Return",
     "EX201_ML":           "EX201 - Import Declaration (Mainland)",
     "EX202A_Release":     "EX202A - Release Goods from DZ",
     "EX202A_Consumption": "EX202A - Consumption of Goods Within DZ",
@@ -104,9 +100,8 @@ DECL_LABELS = {
     "EX203G":             "EX203G - TOO DZ Non-Reg to Reg",
     "EX203H":             "EX203H - Local Purchase (Mainland)",
     "EX204":              "EX204 - Opening Stock",
-    "Excise311":          "Excise 311 - Direct Refunds",
-    "AdminExceptions":    "Administrative Exceptions",
 }
+
 
 YEAR_OPTIONS = ["2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027"]
 

@@ -3,7 +3,6 @@
 Automated tool for downloading declaration reports from the UAE FTA Excise Tax portal. Built for Andersen Consulting internal use.
 
 **v5 changes from v4:**
-- Added EX200 (Excise Tax Return) and Excise 311 (Direct Refunds) declaration types
 - Filter fallback improved: when Approved status returns no records, automatically retries with Warehouse Keeper status before giving up (previously it would give up immediately)
 
 ---
@@ -54,10 +53,6 @@ You can click **Stop** at any time — it will finish the current row cleanly be
 ```
 Downloads/
 └── 2025-01-15_14-30/          ← timestamped run folder
-    ├── EX200/
-    │   ├── January 2025/
-    │   │   └── *.xlsx
-    │   └── February 2025/
     ├── EX201_ML/
     │   └── ...
     └── Combined_Report.xlsx   ← all data merged
