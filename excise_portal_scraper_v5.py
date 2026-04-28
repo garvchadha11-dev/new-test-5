@@ -1885,12 +1885,13 @@ class ExciseScraperApp:
             self.root.after(0, lambda: self._log("Row count is 0 — skipping", "warning"))
             return 0, 0, 0
 
-        row_label = f"{total_rows} (DOM-counted, may be page 1 only)" if dom_count_only else str(total_rows)
+        row_label = f"{total_rows}+ (page 1 visible, will keep going until end-of-data)" if dom_count_only else str(total_rows)
         self.root.after(0, lambda rl=row_label: self._log(f"Rows to download: {rl}", "success"))
 
-        # If row count came from DOM only, use a large sentinel so the loop runs until END
-        if dom_count_only:
-            total_rows = 99999
+        # Display the real visible count in stats; keep a separate internal limit
+        # so the loop keeps running until it hits the END marker
+        display_total = total_rows
+        loop_limit = 99999 if dom_count_only else total_rows
 
         # Spot-check: verify first row's date column matches the expected month
         # Guards against silent filter failures that leave all months visible
@@ -1907,7 +1908,7 @@ class ExciseScraperApp:
         ps_text = page.evaluate(JS_GET_PAGE_SIZE)
         page_size = int(ps_text) if ps_text.isdigit() else 100
 
-        self.root.after(0, lambda tr=total_rows: self._update_stats(total=tr))
+        self.root.after(0, lambda tr=display_total: self._update_stats(total=tr))
 
         row_index = 0
         page_row_index = 0
@@ -1916,7 +1917,7 @@ class ExciseScraperApp:
         expected_files = set()
         safe_to_txn = {}
 
-        while row_index < total_rows:
+        while row_index < loop_limit:
             if self.stop_requested:
                 break
 
@@ -2044,8 +2045,8 @@ class ExciseScraperApp:
 
                 ri = 0
                 pri = 0
-                while ri < total_rows and missing and not self.stop_requested:
-                    if pri >= page_size and total_rows > 1000:
+                while ri < loop_limit and missing and not self.stop_requested:
+                    if pri >= page_size and loop_limit > 1000:
                         nr = page.evaluate(JS_CLICK_NEXT)
                         if nr in ("NEXT_NOT_FOUND", "NEXT_DISABLED"):
                             break
@@ -2121,7 +2122,7 @@ class ExciseScraperApp:
                 self.root.after(0, lambda t=len(expected_files): self._log(
                     f"Verified: all {t} files present", "success"))
 
-        return downloaded, skipped, total_rows
+        return downloaded, skipped, display_total
 
     # ── Combine Files (pure Python + openpyxl — no Excel/VBScript needed) ───────
 
