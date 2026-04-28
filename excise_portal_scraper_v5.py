@@ -24,7 +24,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 except ImportError:
     tk.messagebox.showerror("Missing Package", "playwright is not installed.\n\nRun this in Command Prompt:\n  pip install playwright") if 'tk' in dir() else None
     print("\nERROR: playwright is not installed.")
@@ -1538,22 +1538,26 @@ class ExciseScraperApp:
                 self._wait_not_busy(page)
 
                 # ── 3 & 4. Filter then download: Approved → Warehouse → All ──
-                filter_ok = self._apply_filters(page, search_term)
+                try:
+                    filter_ok = self._apply_filters(page, search_term)
 
-                if filter_ok == "NO_COMBO":
-                    # Panel has no recognizable status combo — can't verify Approved, skip
-                    self.root.after(0, lambda: self._log("No status combo — cannot filter by Approved, skipping panel", "warning"))
-                    filter_ok = False
+                    if filter_ok == "NO_COMBO":
+                        self.root.after(0, lambda: self._log("No status combo — cannot filter by Approved, skipping panel", "warning"))
+                        filter_ok = False
 
-                if filter_ok == "TRY_WAREHOUSE":
-                    # No Approved option — try warehouse keeper status
-                    filter_ok = self._try_warehouse_filter(page, search_term)
+                    if filter_ok == "TRY_WAREHOUSE":
+                        filter_ok = self._try_warehouse_filter(page, search_term)
 
-                if not filter_ok:
-                    self.root.after(0, lambda: self._log("No data found after all filter attempts — skipping", "warning"))
+                    if not filter_ok:
+                        self.root.after(0, lambda: self._log("No data found after all filter attempts — skipping", "warning"))
+                        continue
+
+                    dl, sk, tot = self._download_rows(page, download_dir, dest_folder, search_term)
+                except PlaywrightTimeoutError as te:
+                    self.root.after(0, lambda e=str(te).splitlines()[0]: self._log(
+                        f"Timeout — skipping ({e})", "warning"))
                     continue
 
-                dl, sk, tot = self._download_rows(page, download_dir, dest_folder, search_term)
                 grand_downloaded += dl
                 grand_skipped += sk
                 grand_total += tot
@@ -1885,13 +1889,17 @@ class ExciseScraperApp:
             self.root.after(0, lambda: self._log("Row count is 0 — skipping", "warning"))
             return 0, 0, 0
 
-        row_label = f"{total_rows}+ (page 1 visible, will keep going until end-of-data)" if dom_count_only else str(total_rows)
-        self.root.after(0, lambda rl=row_label: self._log(f"Rows to download: {rl}", "success"))
+        # If we couldn't get a real row count from SAP and only have a DOM count,
+        # the panel is unreliable — skip rather than risk a runaway loop
+        if dom_count_only:
+            self.root.after(0, lambda: self._log(
+                "Could not read total row count from SAP (DOM-only fallback) — skipping", "warning"))
+            return 0, 0, 0
 
-        # Display the real visible count in stats; keep a separate internal limit
-        # so the loop keeps running until it hits the END marker
+        self.root.after(0, lambda tr=total_rows: self._log(f"Rows to download: {tr}", "success"))
+
         display_total = total_rows
-        loop_limit = 99999 if dom_count_only else total_rows
+        loop_limit = total_rows
 
         # Spot-check: verify first row's date column matches the expected month
         # Guards against silent filter failures that leave all months visible
