@@ -1665,7 +1665,7 @@ class ExciseScraperApp:
         return False
 
     def _pw_fill_search(self, page, search_term, max_attempts=15):
-        """Fill the visible search input."""
+        """Fill the visible search input and press Enter to fire SAP's search event."""
         for attempt in range(max_attempts):
             try:
                 input_id = page.evaluate("""
@@ -1684,6 +1684,9 @@ class ExciseScraperApp:
                 val = page.input_value(f'[id="{input_id}"]')
                 self.root.after(0, lambda v=val, a=attempt: self._log(f"Search {a}: filled '{v}'", "info"))
                 if val.lower() == search_term.lower():
+                    # Press Enter to trigger SAP's fireSearch event
+                    page.press(f'[id="{input_id}"]', "Enter")
+                    self._sleep(0.3)
                     return True
             except Exception as e:
                 self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Search {a} error: {e}", "info"))
