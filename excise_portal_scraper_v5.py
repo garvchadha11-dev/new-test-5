@@ -1665,26 +1665,79 @@ class ExciseScraperApp:
         return False
 
     def _pw_fill_search(self, page, search_term, max_attempts=15):
-        """Fill the visible search input and press Enter to fire SAP's search event."""
+        """Fill the panel-specific search input and press Enter to fire SAP's search event."""
         for attempt in range(max_attempts):
             try:
                 input_id = page.evaluate("""
                     () => {
-                        var all = document.querySelectorAll('input[type="search"]');
-                        for (var i = 0; i < all.length; i++) {
-                            if (all[i].getBoundingClientRect().width > 0) return all[i].id;
+                        var tableId = String(window.__PAD_TABLE_ID || '');
+                        var viewPrefix = '';
+                        if (tableId) {
+                            var dash = tableId.indexOf('--');
+                            if (dash > -1) viewPrefix = tableId.substring(0, dash + 2);
                         }
-                        return null;
+                        // Exact panel search input IDs sourced from portal DOM
+                        var SEARCH_IDS = {
+                            '__xmlview19--': '__xmlview19--_201X_search_searchField-I',
+                            '__xmlview36--': '__xmlview36--202B_Search-I',
+                            '__xmlview41--': '__xmlview41--ExciseList_myDeclSearch_searchField-I',
+                            '__xmlview47--': '__xmlview47--_203H_List_table_searchField-I',
+                            '__xmlview25--': '__xmlview25--_202R_Status_searchbar-I',
+                            '__xmlview52--': '__xmlview52--202S_Search-I',
+                            '__xmlview68--': '__xmlview68--202W_Search-I',
+                            '__xmlview73--': '__xmlview73--_203B_Declaration_ListSearch_searchField-I',
+                            '__xmlview30--': '__xmlview30--_203C_myDecSearch_searchField-I',
+                            '__xmlview84--': '__xmlview84--203G_Search-I'
+                        };
+                        var all = document.querySelectorAll('input[type="search"]');
+                        var el = null;
+                        // Pass 1: exact hardcoded ID for this panel
+                        if (viewPrefix && SEARCH_IDS[viewPrefix]) {
+                            for (var i = 0; i < all.length; i++) {
+                                if (all[i].id === SEARCH_IDS[viewPrefix] && all[i].getBoundingClientRect().width > 0) {
+                                    el = all[i]; break;
+                                }
+                            }
+                        }
+                        // Pass 2: same-view _searchField-I pattern
+                        if (!el) {
+                            for (var i = 0; i < all.length; i++) {
+                                var id = all[i].id;
+                                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+                                if (id.indexOf('_searchField-I') > -1 && all[i].getBoundingClientRect().width > 0) {
+                                    el = all[i]; break;
+                                }
+                            }
+                        }
+                        // Pass 3: same-view Search-I (excluding global searchbar)
+                        if (!el) {
+                            for (var i = 0; i < all.length; i++) {
+                                var id = all[i].id;
+                                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+                                if (id.indexOf('Search-I') > -1 && id.indexOf('searchbar') === -1 && all[i].getBoundingClientRect().width > 0) {
+                                    el = all[i]; break;
+                                }
+                            }
+                        }
+                        // Pass 4: any visible search input in same view
+                        if (!el) {
+                            for (var i = 0; i < all.length; i++) {
+                                var id = all[i].id;
+                                if (viewPrefix && id.indexOf(viewPrefix) === -1) continue;
+                                if (all[i].getBoundingClientRect().width > 0) { el = all[i]; break; }
+                            }
+                        }
+                        return el ? el.id : null;
                     }
                 """)
                 if not input_id:
+                    self.root.after(0, lambda a=attempt: self._log(f"Search {a}: input not found yet", "info"))
                     self._sleep(1)
                     continue
                 page.fill(f'[id="{input_id}"]', search_term)
                 val = page.input_value(f'[id="{input_id}"]')
                 self.root.after(0, lambda v=val, a=attempt: self._log(f"Search {a}: filled '{v}'", "info"))
                 if val.lower() == search_term.lower():
-                    # Press Enter to trigger SAP's fireSearch event
                     page.press(f'[id="{input_id}"]', "Enter")
                     self._sleep(0.3)
                     return True
