@@ -526,6 +526,29 @@ JS_FIND_TABLE = """
         var r = t.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
     }
+    // Pass 0: hardcoded tblHeader row IDs sourced from portal DOM — most reliable
+    var HEADER_ROW_IDS = [
+        '__xmlview19--_201X_List_table-tblHeader',
+        '__xmlview36--_202B_List_table-tblHeader',
+        '__xmlview41--ExciseList_myDecl_Table-tblHeader',
+        '__xmlview47--_203H_List_table-tblHeader',
+        '__xmlview25--_202R_DeclarationList_table-tblHeader',
+        '__xmlview52--_202S_Declaration_List_table-tblHeader',
+        '__xmlview57--202UExciseList_myDecl_Table-tblHeader',
+        '__xmlview63--_202V_Declaration_List_table-tblHeader',
+        '__xmlview68--_202W_Declaration_List_table-tblHeader',
+        '__xmlview73--_203B_Declaration_List_table-tblHeader',
+        '__xmlview30--203CExciseList_myDecl_Table-tblHeader',
+        '__xmlview79--_204X_Declaration_List_table-tblHeader',
+        '__xmlview84--_203G_Declaration_List_table-tblHeader'
+    ];
+    for (var h = 0; h < HEADER_ROW_IDS.length; h++) {
+        var hrow = document.getElementById(HEADER_ROW_IDS[h]);
+        if (hrow && _visibleTable(hrow)) {
+            var tbl = hrow.closest('table');
+            if (tbl && tbl.id) { window.__PAD_TABLE_ID = tbl.id; return tbl.id; }
+        }
+    }
     // Pass 1: known SAP list-table ID patterns
     var tables = document.querySelectorAll("table[id*='_Table-listUl'], table[id*='_List_table-listUl'], table[id*='-listUl']");
     for (var t = 0; t < tables.length; t++) {
@@ -565,7 +588,7 @@ JS_GET_ROW_COUNT = """
     if (!tableId) return "0";
     var sapTableId = tableId.replace("-listUl", "");
     var sapTable = sap.ui.getCore().byId(sapTableId);
-    // Primary: SAP binding length — works for all declaration types
+    // Primary: SAP binding length — total count including un-rendered pages
     if (sapTable) {
         var binding = sapTable.getBinding('items');
         if (binding && typeof binding.getLength === 'function') {
@@ -573,7 +596,7 @@ JS_GET_ROW_COUNT = """
             if (len > 0) return String(len);
         }
     }
-    // Fallback: row-count toolbar span
+    // Fallback 1: row-count toolbar span
     var rowCountSpan = document.getElementById(sapTableId + "_rowCount");
     if (rowCountSpan) {
         var text = String(rowCountSpan.innerText || rowCountSpan.textContent || "");
@@ -581,10 +604,25 @@ JS_GET_ROW_COUNT = """
         if (!m) m = text.match(/([\\d,]+)/);
         if (m) return String(m[1]).replace(/,/g, "");
     }
-    // Last resort: count rendered SAP items
+    // Fallback 2: any toolbar span showing "X items" or "X records"
+    var allSpans = document.querySelectorAll('span[class*="sapMTBShrinkItem"], span[class*="sapMText"]');
+    for (var s = 0; s < allSpans.length; s++) {
+        var t = (allSpans[s].innerText || allSpans[s].textContent || '').trim();
+        var m2 = t.match(/^(\\d[\\d,]*)\\s*(items?|records?)/i);
+        if (m2) return String(m2[1]).replace(/,/g, '');
+    }
+    // Fallback 3: count rendered SAP items
     if (sapTable && sapTable.getItems) {
         var n = sapTable.getItems().length;
         if (n > 0) return String(n);
+    }
+    // Fallback 4: count visible data rows directly in the DOM table
+    var domTable = document.getElementById(tableId);
+    if (domTable) {
+        var dataRows = Array.from(domTable.querySelectorAll('tr')).filter(function(r) {
+            return r.querySelector('td') && r.getBoundingClientRect().height > 0;
+        });
+        if (dataRows.length > 0) return 'DOM:' + String(dataRows.length);
     }
     return "0";
 }
@@ -1575,63 +1613,165 @@ class ExciseScraperApp:
             self._sleep(0.5)
         self.root.after(0, lambda: self._log("Busy indicator still present after timeout — continuing anyway", "warning"))
 
+    # ── Filter helpers — real Playwright interactions (visible on screen) ────────
+
+    def _pw_find_status_arrow_id(self, page):
+        return page.evaluate("""
+            () => {
+                var arrows = document.querySelectorAll('span[id$="_combobox-arrow"]');
+                for (var i = 0; i < arrows.length; i++) {
+                    var id = arrows[i].id;
+                    var rect = arrows[i].getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0 && (
+                        id.indexOf('Status_combobox') > -1 ||
+                        id.indexOf('DecStatus_combobox') > -1 ||
+                        id.indexOf('myDecStatus_combobox') > -1 ||
+                        id.indexOf('myDeclStatus_combobox') > -1
+                    )) return id;
+                }
+                for (var i = 0; i < arrows.length; i++) {
+                    if (arrows[i].getBoundingClientRect().width > 0) return arrows[i].id;
+                }
+                return null;
+            }
+        """)
+
+    def _pw_select_status(self, page, desired_text, max_attempts=15):
+        """Click the status combobox arrow and select desired_text via real browser interaction."""
+        for attempt in range(max_attempts):
+            try:
+                arrow_id = self._pw_find_status_arrow_id(page)
+                if not arrow_id:
+                    self.root.after(0, lambda a=attempt: self._log(f"Status combo {a}: arrow not visible yet", "info"))
+                    self._sleep(1)
+                    continue
+
+                self.root.after(0, lambda a=attempt: self._log(f"Status combo {a}: clicking arrow", "info"))
+                page.locator(f'[id="{arrow_id}"]').click(timeout=3000)
+
+                try:
+                    page.wait_for_selector('li[role="option"]', state='visible', timeout=5000)
+                except Exception:
+                    self.root.after(0, lambda a=attempt: self._log(f"Status combo {a}: popup did not open", "info"))
+                    self._sleep(1)
+                    continue
+
+                options = page.locator('li[role="option"]')
+                count = options.count()
+                found = False
+                for idx in range(count):
+                    opt = options.nth(idx)
+                    txt = (opt.text_content() or "").strip()
+                    if desired_text.lower() in txt.lower():
+                        opt.click(timeout=3000)
+                        self.root.after(0, lambda t=txt, a=attempt: self._log(f"Status combo {a}: selected '{t}'", "info"))
+                        found = True
+                        break
+
+                if not found:
+                    self.root.after(0, lambda a=attempt, d=desired_text: self._log(f"Status combo {a}: '{d}' not in option list", "warning"))
+                    try:
+                        page.keyboard.press("Escape")
+                    except Exception:
+                        pass
+                    return "NO_OPTION"
+
+                self._sleep(0.5)
+                return True
+
+            except Exception as e:
+                self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Status combo {a} error: {e}", "info"))
+                self._sleep(1)
+
+        return "NO_COMBO"
+
+    def _pw_fill_search(self, page, search_term, max_attempts=15):
+        """Fill the visible search input via real Playwright interaction."""
+        for attempt in range(max_attempts):
+            try:
+                inp = page.locator('input[type="search"]').first()
+                inp.fill(search_term, timeout=2000)
+                val = inp.input_value(timeout=2000)
+                self.root.after(0, lambda v=val, a=attempt: self._log(f"Search {a}: filled '{v}'", "info"))
+                if val.lower() == search_term.lower():
+                    return True
+            except Exception as e:
+                self.root.after(0, lambda e=str(e), a=attempt: self._log(f"Search {a} error: {e}", "info"))
+            self._sleep(1)
+        return False
+
+    def _pw_set_page_size(self, page, size="1000"):
+        """Click the page-size combobox and select the given size via real Playwright interaction."""
+        try:
+            arrow_id = page.evaluate("""
+                () => {
+                    var arrows = document.querySelectorAll('span[id*="perpage-arrow"][role="button"]');
+                    for (var i = 0; i < arrows.length; i++) {
+                        if (arrows[i].getBoundingClientRect().width > 0) return arrows[i].id;
+                    }
+                    return null;
+                }
+            """)
+            if not arrow_id:
+                return False
+            page.locator(f'[id="{arrow_id}"]').click(timeout=3000)
+            page.wait_for_selector('li[role="option"]', state='visible', timeout=5000)
+            options = page.locator('li[role="option"]')
+            for idx in range(options.count()):
+                opt = options.nth(idx)
+                if (opt.text_content() or "").strip() == size:
+                    opt.click(timeout=3000)
+                    self._sleep(0.5)
+                    self.root.after(0, lambda s=size: self._log(f"Page size set to {s}", "info"))
+                    return True
+        except Exception as e:
+            self.root.after(0, lambda e=str(e): self._log(f"Page size error: {e}", "info"))
+        return False
+
+    def _pw_click_go(self, page):
+        """Click the visible Go button via real Playwright interaction."""
+        try:
+            go = page.locator('button').filter(has=page.locator('bdi', has_text='Go')).first()
+            go.click(timeout=3000)
+            self.root.after(0, lambda: self._log("Go button clicked", "info"))
+            return True
+        except Exception as e:
+            self.root.after(0, lambda e=str(e): self._log(f"Go button error: {e}", "info"))
+            return False
+
     # ── ApplyFilters ──────────────────────────────────────────────────────────
 
     def _apply_filters(self, page, search_term):
         search_term = search_term.lower()
         self._sleep(3)
 
-        # ── Search (retry up to 15x, 1s between) ──
-        # Hardcoded SEARCH_IDS in js_search match the reference file exactly — if
-        # verify fails, SAP simply hasn't mounted the search field yet.
-        search_ok = False
-        for attempt in range(15):
-            sv = page.evaluate(js_search(search_term))
-            self._sleep(1)
-            verify = page.evaluate(js_verify_search(search_term))
-            self.root.after(0, lambda v=verify, a=attempt: self._log(f"Search attempt {a}: got '{v}'", "info"))
-            if verify == search_term:
-                search_ok = True
-                break
-            self._sleep(1)
+        # ── Search (real Playwright fill — visible on screen) ──
+        search_ok = self._pw_fill_search(page, search_term)
         if not search_ok:
             self.root.after(0, lambda: self._log("Search did not verify — continuing anyway", "warning"))
 
-        # ── Status → Approved (retry up to 15x, 1s between) ──
-        # COMBO_IDS are proven correct against the portal DOM — ARROW_NOT_FOUND /
-        # COMBO_NOT_FOUND means SAP hasn't finished mounting, so keep waiting.
-        status_result = "FAIL"
-        for attempt in range(15):
-            status_result = page.evaluate(JS_SET_STATUS_APPROVED)
-            self.root.after(0, lambda r=status_result, a=attempt: self._log(f"Status attempt {a}: {r}", "info"))
-            if status_result == "APPROVED_SET":
-                break
-            if status_result in ("ARROW_NOT_FOUND", "COMBO_NOT_FOUND"):
-                self._sleep(1)
-            else:
-                break
+        # ── Status → Approved (real Playwright click — visible on screen) ──
+        status_result = self._pw_select_status(page, "Approved")
 
-        if status_result in ("ARROW_NOT_FOUND", "COMBO_NOT_FOUND"):
-            self.root.after(0, lambda r=status_result: self._log(f"Status combo not available ({r}) — skipping", "warning"))
+        if status_result == "NO_COMBO":
+            self.root.after(0, lambda: self._log("Status combo not available — skipping panel", "warning"))
             return "NO_COMBO"
 
-        if status_result == "NO_APPROVED":
-            self.root.after(0, lambda: self._log("No Approved option — trying warehouse then All", "info"))
+        if status_result == "NO_OPTION":
+            self.root.after(0, lambda: self._log("No Approved option — trying warehouse keeper", "info"))
             return "TRY_WAREHOUSE"
 
-        # ── Page size → 1000 (retry up to 3x, 1s between) ──
-        for attempt in range(4):
-            pv = page.evaluate(JS_SET_PAGE_1000)
-            self.root.after(0, lambda v=pv, a=attempt: self._log(f"Page size attempt {a}: {v}", "info"))
-            if pv == "1000":
-                break
-            self._sleep(1)
+        if status_result is not True:
+            self.root.after(0, lambda: self._log("Status combo failed — trying warehouse keeper", "info"))
+            return "TRY_WAREHOUSE"
+
+        # ── Page size → 1000 ──
+        self._pw_set_page_size(page, "1000")
         self._sleep(1)
 
         # ── Click Go ──
-        go_result = page.evaluate(JS_CLICK_GO)
-        self.root.after(0, lambda r=go_result: self._log(f"Go button: {r}", "info"))
-        self._sleep(3)  # let SAP show busy indicator before first poll
+        self._pw_click_go(page)
+        self._sleep(3)
 
         # ── Poll every 0.5s up to 30s ──
         check = "NO_DATA"
@@ -1647,30 +1787,24 @@ class ExciseScraperApp:
             self.root.after(0, lambda: self._log("Approved filter — data found", "success"))
             return True
 
-        # Approved returned no records — fall through to warehouse keeper (PAD behaviour)
         self.root.after(0, lambda: self._log("Approved returned no data — trying warehouse keeper", "info"))
         return "TRY_WAREHOUSE"
 
     def _try_warehouse_filter(self, page, search_term):
         search_term = search_term.lower()
         self.root.after(0, lambda: self._log("Trying warehouse keeper status...", "info"))
-        wh = "FAIL"
-        for attempt in range(4):
-            wh = page.evaluate(JS_SET_STATUS_WAREHOUSE)
-            self.root.after(0, lambda r=wh, a=attempt: self._log(f"Warehouse status attempt {a}: {r}", "info"))
-            if wh == "WAREHOUSE_SET":
-                break
-            self._sleep(1)
-        if wh != "WAREHOUSE_SET":
+
+        wh = self._pw_select_status(page, "Warehouse", max_attempts=4)
+        if wh != True:
             self.root.after(0, lambda: self._log("Warehouse status not available — no data", "warning"))
             return False
+
         self._sleep(1)
-        page.evaluate(js_search(search_term))
+        self._pw_fill_search(page, search_term)
         self._sleep(1)
-        page.evaluate(JS_SET_PAGE_1000)
+        self._pw_set_page_size(page, "1000")
         self._sleep(1)
-        go_result = page.evaluate(JS_CLICK_GO)
-        self.root.after(0, lambda r=go_result: self._log(f"Warehouse Go: {r}", "info"))
+        self._pw_click_go(page)
         self._sleep(1)
 
         check = "NO_DATA"
@@ -1705,11 +1839,16 @@ class ExciseScraperApp:
         # Poll until the SAP table is visible and has rows — up to 20s
         table_id = "TABLE_NOT_FOUND"
         total_rows = 0
+        dom_count_only = False
         for attempt in range(40):
             table_id = page.evaluate(JS_FIND_TABLE)
             if table_id != "TABLE_NOT_FOUND":
                 rc_text = page.evaluate(JS_GET_ROW_COUNT)
-                total_rows = int(rc_text) if rc_text.isdigit() else 0
+                if rc_text.startswith("DOM:"):
+                    dom_count_only = True
+                    total_rows = int(rc_text[4:])
+                else:
+                    total_rows = int(rc_text) if rc_text.isdigit() else 0
                 if total_rows > 0:
                     break
             self.root.after(0, lambda a=attempt: self._log(f"Waiting for table... (attempt {a+1})", "info") if a % 4 == 0 else None)
@@ -1719,10 +1858,16 @@ class ExciseScraperApp:
             self.root.after(0, lambda: self._log("Table not found after 20s — skipping", "error"))
             return 0, 0, 0
 
-        self.root.after(0, lambda tr=total_rows: self._log(f"Rows to download: {tr}", "success"))
-
         if total_rows == 0:
+            self.root.after(0, lambda: self._log("Row count is 0 — skipping", "warning"))
             return 0, 0, 0
+
+        row_label = f"{total_rows} (DOM-counted, may be page 1 only)" if dom_count_only else str(total_rows)
+        self.root.after(0, lambda rl=row_label: self._log(f"Rows to download: {rl}", "success"))
+
+        # If row count came from DOM only, use a large sentinel so the loop runs until END
+        if dom_count_only:
+            total_rows = 99999
 
         # Spot-check: verify first row's date column matches the expected month
         # Guards against silent filter failures that leave all months visible
@@ -1767,7 +1912,9 @@ class ExciseScraperApp:
 
             # Extract TXN
             txn = page.evaluate(js_extract_txn(page_row_index))
-            if txn in ("END", "TABLE_NOT_FOUND", "TABLE_NOT_VISIBLE", "COLUMN_NOT_FOUND", "EMPTY"):
+            if txn == "END":
+                break
+            if txn in ("TABLE_NOT_FOUND", "TABLE_NOT_VISIBLE", "COLUMN_NOT_FOUND", "EMPTY"):
                 skipped += 1
                 row_index += 1
                 page_row_index += 1
