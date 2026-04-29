@@ -963,16 +963,22 @@ class ExciseScraperApp:
         header = tk.Frame(self.root, bg=BG, height=80)
         header.pack(fill="x")
         header.pack_propagate(False)
-        self.wait_btn = tk.Button(header, text="⏱ Wait: 5s", command=self._set_filter_wait,
+        header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(1, weight=0)
+
+        title_col = tk.Frame(header, bg=BG)
+        title_col.grid(row=0, column=0, sticky="nsew")
+        tk.Label(title_col, text="FTA Excise Portal Scraper",
+                 font=("Helvetica Neue", 22, "bold"), fg=ACCENT, bg=BG).pack(pady=(20, 2))
+        tk.Label(title_col, text="Automated declaration export tool",
+                 font=("Helvetica Neue", 11), fg=FG_DIM, bg=BG).pack()
+
+        self.wait_btn = tk.Button(header, text="Wait: 5s", command=self._set_filter_wait,
                   font=("Helvetica Neue", 11, "bold"), fg="#FFFFFF", bg=ACCENT,
                   activebackground=ACCENT, activeforeground="#FFFFFF",
                   relief="raised", borderwidth=2, cursor="hand2",
-                  padx=12, pady=4)
-        self.wait_btn.place(relx=1.0, y=16, anchor="ne", x=-16)
-        tk.Label(header, text="FTA Excise Portal Scraper",
-                 font=("Helvetica Neue", 22, "bold"), fg=ACCENT, bg=BG).pack(pady=(20, 2))
-        tk.Label(header, text="Automated declaration export tool",
-                 font=("Helvetica Neue", 11), fg=FG_DIM, bg=BG).pack()
+                  padx=14, pady=6)
+        self.wait_btn.grid(row=0, column=1, sticky="ne", padx=16, pady=16)
 
         tk.Frame(self.root, bg=BORDER, height=1).pack(fill="x", padx=30, pady=(10, 0))
 
@@ -1225,7 +1231,7 @@ class ExciseScraperApp:
             messagebox.showerror("Invalid", "Enter a whole number between 1 and 120 (e.g. 5 or 10s).", parent=self.root)
             return
         self.filter_wait_secs = n
-        self.wait_btn.configure(text=f"⏱ Wait: {n}s")
+        self.wait_btn.configure(text=f"Wait: {n}s")
         self._log(f"Filter bar wait set to {n}s", "accent")
 
     def _set_last_month(self):
