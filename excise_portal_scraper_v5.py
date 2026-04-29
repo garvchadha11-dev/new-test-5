@@ -1167,16 +1167,17 @@ class ExciseScraperApp:
         self.log_text.tag_configure("accent", foreground="#FFB3BA")
 
         # ── Footer ──
-        footer = tk.Frame(self.root, bg=BG)
-        footer.pack(fill="x", pady=(4, 8))
+        footer = tk.Frame(self.root, bg=BG, height=40)
+        footer.pack(fill="x", side="bottom", pady=(4, 8))
+        footer.pack_propagate(False)
+        self.wait_btn = tk.Button(footer, text="⏱ Wait: 5s", command=self._set_filter_wait,
+                  font=("Helvetica Neue", 11, "bold"), fg="#FFFFFF", bg=ACCENT,
+                  activebackground=ACCENT, activeforeground="#FFFFFF",
+                  relief="raised", borderwidth=2, cursor="hand2",
+                  padx=12, pady=4)
+        self.wait_btn.pack(side="right", padx=(0, 16))
         tk.Label(footer, text="Report any errors to Garv — let's fix them soon",
-                 font=("Helvetica Neue", 9), fg=FG_DIM, bg=BG).pack(side="left", expand=True)
-        tk.Button(footer, text="Wait: 5s", command=self._set_filter_wait,
-                  font=("Helvetica Neue", 9), fg=FG, bg=BG_CARD,
-                  activebackground=BG_CARD, activeforeground=ACCENT,
-                  relief="flat", borderwidth=1, cursor="hand2",
-                  highlightbackground=BORDER, highlightthickness=1).pack(side="right", padx=(0, 12))
-        self.wait_btn = footer.winfo_children()[-1]
+                 font=("Helvetica Neue", 9), fg=FG_DIM, bg=BG).pack(side="left", padx=(16, 0))
 
     # ── UI Helpers ────────────────────────────────────────────────────────────
 
@@ -1227,7 +1228,7 @@ class ExciseScraperApp:
             messagebox.showerror("Invalid", "Enter a whole number between 1 and 120 (e.g. 5 or 10s).", parent=self.root)
             return
         self.filter_wait_secs = n
-        self.wait_btn.configure(text=f"Wait: {n}s")
+        self.wait_btn.configure(text=f"⏱ Wait: {n}s")
         self._log(f"Filter bar wait set to {n}s", "accent")
 
     def _set_last_month(self):
