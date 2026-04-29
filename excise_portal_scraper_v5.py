@@ -974,11 +974,11 @@ class ExciseScraperApp:
                  font=("Helvetica Neue", 11), fg=FG_DIM, bg=BG).pack()
 
         self.wait_btn = tk.Button(header, text="Wait: 5s", command=self._set_filter_wait,
-                  font=("Helvetica Neue", 11, "bold"), fg="#FFFFFF", bg=ACCENT,
-                  activebackground=ACCENT, activeforeground="#FFFFFF",
-                  relief="raised", borderwidth=2, cursor="hand2",
-                  padx=14, pady=6)
-        self.wait_btn.grid(row=0, column=1, sticky="ne", padx=16, pady=16)
+                  font=("Helvetica Neue", 9, "bold"), fg="#000000",
+                  activeforeground="#000000",
+                  relief="raised", borderwidth=1, cursor="hand2",
+                  padx=6, pady=2)
+        self.wait_btn.grid(row=0, column=1, sticky="ne", padx=12, pady=12)
 
         tk.Frame(self.root, bg=BORDER, height=1).pack(fill="x", padx=30, pady=(10, 0))
 
