@@ -912,6 +912,7 @@ class ExciseScraperApp:
 
         self.is_running = False
         self.stop_requested = False
+        self.filter_wait_secs = 5
         self.pw_page = None
         self.pw_browser = None
         self.pw_instance = None
@@ -1166,8 +1167,16 @@ class ExciseScraperApp:
         self.log_text.tag_configure("accent", foreground="#FFB3BA")
 
         # ── Footer ──
-        tk.Label(self.root, text="Report any errors to Garv — let's fix them soon",
-                 font=("Helvetica Neue", 9), fg=FG_DIM, bg=BG).pack(pady=(4, 8))
+        footer = tk.Frame(self.root, bg=BG)
+        footer.pack(fill="x", pady=(4, 8))
+        tk.Label(footer, text="Report any errors to Garv — let's fix them soon",
+                 font=("Helvetica Neue", 9), fg=FG_DIM, bg=BG).pack(side="left", expand=True)
+        tk.Button(footer, text="Wait: 5s", command=self._set_filter_wait,
+                  font=("Helvetica Neue", 9), fg=FG, bg=BG_CARD,
+                  activebackground=BG_CARD, activeforeground=ACCENT,
+                  relief="flat", borderwidth=1, cursor="hand2",
+                  highlightbackground=BORDER, highlightthickness=1).pack(side="right", padx=(0, 12))
+        self.wait_btn = footer.winfo_children()[-1]
 
     # ── UI Helpers ────────────────────────────────────────────────────────────
 
@@ -1197,6 +1206,29 @@ class ExciseScraperApp:
             self.stat_progress.configure(text=f"{progress}%")
             self.progress_var.set(progress)
 
+
+    def _set_filter_wait(self):
+        from tkinter import simpledialog
+        val = simpledialog.askstring(
+            "Filter Bar Wait",
+            "Seconds to wait for filter bar to render after table appears.\n"
+            "Increase if filters silently skip on slow networks (e.g. 10s).",
+            initialvalue=str(self.filter_wait_secs),
+            parent=self.root,
+        )
+        if val is None:
+            return
+        s = val.strip().lower().rstrip("s").strip()
+        try:
+            n = int(s)
+            if n < 1 or n > 120:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Invalid", "Enter a whole number between 1 and 120 (e.g. 5 or 10s).", parent=self.root)
+            return
+        self.filter_wait_secs = n
+        self.wait_btn.configure(text=f"Wait: {n}s")
+        self._log(f"Filter bar wait set to {n}s", "accent")
 
     def _set_last_month(self):
         import datetime
@@ -1489,8 +1521,9 @@ class ExciseScraperApp:
                     # ── Give SAP time to mount filter bar / status combo / search field ──
                     # Table appears before these controls finish rendering; without this
                     # wait, filter attempts hit a half-built DOM and silently skip.
-                    self.root.after(0, lambda: self._log("Waiting 5s for filter bar to render...", "info"))
-                    self._sleep(5)
+                    wait_s = self.filter_wait_secs
+                    self.root.after(0, lambda w=wait_s: self._log(f"Waiting {w}s for filter bar to render...", "info"))
+                    self._sleep(wait_s)
 
                 # ── Wait for SAP busy indicator to fully disappear ──
                 self._wait_not_busy(page)
