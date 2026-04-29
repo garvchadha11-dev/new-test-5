@@ -963,6 +963,12 @@ class ExciseScraperApp:
         header = tk.Frame(self.root, bg=BG, height=80)
         header.pack(fill="x")
         header.pack_propagate(False)
+        self.wait_btn = tk.Button(header, text="⏱ Wait: 5s", command=self._set_filter_wait,
+                  font=("Helvetica Neue", 11, "bold"), fg="#FFFFFF", bg=ACCENT,
+                  activebackground=ACCENT, activeforeground="#FFFFFF",
+                  relief="raised", borderwidth=2, cursor="hand2",
+                  padx=12, pady=4)
+        self.wait_btn.place(relx=1.0, y=16, anchor="ne", x=-16)
         tk.Label(header, text="FTA Excise Portal Scraper",
                  font=("Helvetica Neue", 22, "bold"), fg=ACCENT, bg=BG).pack(pady=(20, 2))
         tk.Label(header, text="Automated declaration export tool",
@@ -1167,17 +1173,8 @@ class ExciseScraperApp:
         self.log_text.tag_configure("accent", foreground="#FFB3BA")
 
         # ── Footer ──
-        footer = tk.Frame(self.root, bg=BG, height=40)
-        footer.pack(fill="x", side="bottom", pady=(4, 8))
-        footer.pack_propagate(False)
-        self.wait_btn = tk.Button(footer, text="⏱ Wait: 5s", command=self._set_filter_wait,
-                  font=("Helvetica Neue", 11, "bold"), fg="#FFFFFF", bg=ACCENT,
-                  activebackground=ACCENT, activeforeground="#FFFFFF",
-                  relief="raised", borderwidth=2, cursor="hand2",
-                  padx=12, pady=4)
-        self.wait_btn.pack(side="right", padx=(0, 16))
-        tk.Label(footer, text="Report any errors to Garv — let's fix them soon",
-                 font=("Helvetica Neue", 9), fg=FG_DIM, bg=BG).pack(side="left", padx=(16, 0))
+        tk.Label(self.root, text="Report any errors to Garv — let's fix them soon",
+                 font=("Helvetica Neue", 9), fg=FG_DIM, bg=BG).pack(pady=(4, 8))
 
     # ── UI Helpers ────────────────────────────────────────────────────────────
 
